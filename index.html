@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprehensive AI Pump Curve Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* Table styles */
+        #pumpDataTable td {
+            padding: 0.5rem;
+            border: 1px solid #e5e7eb;
+            text-align: right;
+        }
+        #pumpDataTable th {
+            padding: 0.5rem;
+            text-align: center;
+            background-color: #f3f4f6;
+        }
+        #pumpDataTable td[contenteditable="true"]:focus {
+            outline: 2px solid #3b82f6;
+            background-color: #eff6ff;
+        }
+        /* Conflict row style */
+        .conflict-row td {
+            background-color: #fee2e2 !important; /* light red */
+        }
+        /* Toggle Switch */
+        .switch { position: relative; display: inline-block; width: 110px; height: 34px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 26px; width: 26px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #3b82f6; }
+        input:checked + .slider:before { transform: translateX(76px); }
+        .slider-text { position: absolute; color: white; width: 100%; text-align: center; line-height: 34px; font-weight: bold; font-size: 12px; pointer-events: none; }
+        .imperial-text { left: 0; width: 50%; }
+        .metric-text { right: 0; width: 50%; }
+
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Comprehensive AI Pump Curve Analyzer</h1>
+            <p class="mt-2 text-md text-gray-600">Analyze Head, Power, Efficiency, and NPSHr with AI-driven insights.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Configuration Panel -->
+            <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg flex flex-col gap-y-6">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-2xl font-semibold">Configuration</h2>
+                     <label class="switch">
+                        <input type="checkbox" id="unitToggle">
+                        <span class="slider">
+                             <span class="slider-text imperial-text">Imperial</span>
+                             <span class="slider-text metric-text">Metric</span>
+                        </span>
+                    </label>
+                </div>
+                
+                <div class="bg-indigo-50 border border-indigo-200 p-4 rounded-lg">
+                    <h3 class="text-lg font-semibold text-indigo-800 mb-3">✨ AI Features</h3>
+                     <input type="text" id="pumpDescription" placeholder="e.g., industrial centrifugal pump" class="w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                    <button id="generateDataButton" class="mt-2 w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-indigo-700 transition duration-300 flex items-center justify-center gap-2">
+                        Generate Sample Data
+                    </button>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-medium text-gray-800 mb-2">1. Pump Curve Data</h3>
+                    <p class="text-xs text-gray-500 mb-2">Enter data below. You can paste directly from Excel.</p>
+                    <div class="overflow-x-auto">
+                        <table id="pumpDataTable" class="w-full text-sm">
+                            <thead>
+                                <tr>
+                                    <th id="flowHeader">Flow (GPM)</th>
+                                    <th id="headHeader">Head (ft)</th>
+                                    <th>Eff. (%)</th>
+                                    <th id="powerHeader">Power (HP)</th>
+                                    <th id="npshrHeader">NPSHr (ft)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pumpDataBody">
+                                <!-- Rows will be generated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-lg font-medium text-gray-800 mb-3">2. System Curve Definition</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="staticHead" class="block text-sm font-medium text-gray-700">Static Head (<span class="unit-len">ft</span>)</label>
+                            <input type="number" id="staticHead" value="50" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                        </div>
+                        <div>
+                            <label for="frictionCoefficient" class="block text-sm font-medium text-gray-700">Friction Coeff. (k)</label>
+                            <input type="number" id="frictionCoefficient" value="0.001" step="0.0001" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-lg font-medium text-gray-800 mb-3">3. Pump Conditions</h3>
+                     <div class="space-y-4">
+                        <div><label for="originalRpm" class="block text-sm font-medium">Original Speed (RPM)</label><input type="number" id="originalRpm" value="1800" class="mt-1 w-full p-2 border rounded-md"></div>
+                        <div><label for="originalDiameter" class="block text-sm font-medium">Original Impeller Dia. (<span class="unit-diam">in</span>)</label><input type="number" id="originalDiameter" value="10" class="mt-1 w-full p-2 border rounded-md"></div>
+                        <div><label for="newRpm" class="block text-sm font-medium">New Speed (RPM): <span id="newRpmValue" class="font-bold text-indigo-600">1800</span></label><input type="range" id="newRpm" min="500" max="3600" value="1800" step="10" class="w-full"></div>
+                        <div><label for="newDiameter" class="block text-sm font-medium">New Impeller Dia. (<span class="unit-diam">in</span>): <span id="newDiameterValue" class="font-bold text-indigo-600">10.0</span></label><input type="range" id="newDiameter" min="5" max="15" value="10" step="0.1" class="w-full"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="print-area" class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg flex flex-col">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-800 mb-2">Chart Display Options</h3>
+                        <div class="flex flex-wrap items-center gap-4">
+                            <label class="flex items-center space-x-2"><input type="checkbox" id="showPower" checked> <span>Power</span></label>
+                            <label class="flex items-center space-x-2"><input type="checkbox" id="showEfficiency" checked> <span>Efficiency</span></label>
+                            <label class="flex items-center space-x-2"><input type="checkbox" id="showNPSHr" checked> <span>NPSHr</span></label>
+                             <button id="printPdfButton" class="bg-gray-600 text-white font-semibold py-1 px-3 rounded-md hover:bg-gray-700 text-sm flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/><path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/></svg>
+                                Print to PDF
+                            </button>
+                        </div>
+                    </div>
+                    <div id="operatingPointResult" class="text-right bg-violet-100 p-3 rounded-lg border border-violet-300">
+                        <h4 class="font-bold text-violet-800">Operating Point</h4>
+                        <p class="text-sm text-violet-700">Not calculated</p>
+                    </div>
+                </div>
+                <div class="flex-grow mt-4" style="position: relative; height: 50vh;">
+                     <canvas id="pumpCurveChart"></canvas>
+                </div>
+                <div class="mt-6">
+                     <button id="analyzeButton" class="w-full bg-pink-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-pink-700 flex items-center justify-center gap-2">
+                        ✨ Analyze Full Performance
+                    </button>
+                    <div id="analysisResult" class="mt-4 p-4 border rounded-lg bg-gray-50 min-h-[100px]">
+                         <p class="text-gray-500">Click "Analyze" for an AI summary.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Conflict Modal -->
+    <div id="conflictModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-red-600">Data Conflict</h3>
+                <button id="closeConflictModal" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <p id="conflictMessage" class="text-gray-700 mb-6">There is a mathematical conflict between the entered Power and Efficiency values.</p>
+            <button id="closeConflictModalBtn" class="w-full bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700">Close</button>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- GLOBAL STATE ---
+            let pumpChart;
+            let lastOperatingPoint = null;
+            let currentUnitSystem = 'imperial'; // 'imperial' or 'metric'
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+            // --- DOM ELEMENT REFERENCES ---
+            const dom = {
+                unitToggle: document.getElementById('unitToggle'),
+                pumpDataBody: document.getElementById('pumpDataBody'),
+                staticHead: document.getElementById('staticHead'),
+                frictionCoefficient: document.getElementById('frictionCoefficient'),
+                originalRpm: document.getElementById('originalRpm'),
+                originalDiameter: document.getElementById('originalDiameter'),
+                newRpm: document.getElementById('newRpm'),
+                newDiameter: document.getElementById('newDiameter'),
+                newRpmValue: document.getElementById('newRpmValue'),
+                newDiameterValue: document.getElementById('newDiameterValue'),
+                operatingPointResult: document.getElementById('operatingPointResult'),
+                analysisResult: document.getElementById('analysisResult'),
+                ctx: document.getElementById('pumpCurveChart').getContext('2d'),
+                generateDataButton: document.getElementById('generateDataButton'),
+                analyzeButton: document.getElementById('analyzeButton'),
+                printPdfButton: document.getElementById('printPdfButton'),
+                showPower: document.getElementById('showPower'),
+                showEfficiency: document.getElementById('showEfficiency'),
+                showNPSHr: document.getElementById('showNPSHr'),
+                pumpDescription: document.getElementById('pumpDescription'),
+                conflictModal: document.getElementById('conflictModal'),
+                conflictMessage: document.getElementById('conflictMessage'),
+                closeConflictModal: document.getElementById('closeConflictModal'),
+                closeConflictModalBtn: document.getElementById('closeConflictModalBtn'),
+            };
+
+            // --- UNIT CONVERSION CONSTANTS ---
+            const CONVERSIONS = {
+                flow: 0.227125, // 1 GPM = 0.227125 m³/hr
+                head: 0.3048,   // 1 ft = 0.3048 m
+                power: 0.7457,  // 1 HP = 0.7457 kW
+                diameter: 25.4, // 1 in = 25.4 mm
+                k_factor: 5.915 // k_metric = 5.915 * k_imperial
+            };
+
+            // --- MODAL HANDLING ---
+            function showConflictModal(rowIndex) {
+                dom.conflictMessage.textContent = `Data conflict detected in row ${rowIndex}. Please check your Power and Efficiency values, as they do not mathematically match the given Flow and Head.`;
+                dom.conflictModal.classList.remove('hidden');
+                dom.conflictModal.classList.add('flex');
+            }
+
+            function hideConflictModal() {
+                dom.conflictModal.classList.add('hidden');
+                dom.conflictModal.classList.remove('flex');
+            }
+            dom.closeConflictModal.addEventListener('click', hideConflictModal);
+            dom.closeConflictModalBtn.addEventListener('click', hideConflictModal);
+
+
+            // --- TABLE INITIALIZATION & HANDLING ---
+            function initializeTable() {
+                dom.pumpDataBody.innerHTML = '';
+                for (let i = 0; i < 10; i++) {
+                    const row = dom.pumpDataBody.insertRow();
+                    for (let j = 0; j < 5; j++) {
+                        const cell = row.insertCell();
+                        cell.contentEditable = true;
+                    }
+                }
+                const initialData = [
+                    [50, 118, 55, '', 11], [100, 110, 75, '', 12],
+                    [150, 95, 80, '', 14], [200, 70, 72, '', 18], [250, 40, 60, '', 25]
+                ];
+                initialData.forEach((rowData, rowIndex) => {
+                    rowData.forEach((cellData, colIndex) => {
+                        dom.pumpDataBody.rows[rowIndex].cells[colIndex].textContent = cellData;
+                    });
+                });
+                autoCalculateTable();
+            }
+
+            function autoCalculateTable() {
+                // Clear previous conflicts
+                document.querySelectorAll('.conflict-row').forEach(row => row.classList.remove('conflict-row'));
+                let conflictFound = false;
+
+                for (let i = 0; i < dom.pumpDataBody.rows.length; i++) {
+                    const row = dom.pumpDataBody.rows[i];
+                    const cells = Array.from(row.cells).map(c => parseFloat(c.textContent) || 0);
+                    let [flow, head, eff, power] = cells;
+
+                    if (flow > 0 && head > 0) {
+                        // Case 1: Both are entered, check for conflict.
+                        if (eff > 0 && power > 0) {
+                            const effRatio = eff / 100;
+                            const theoreticalPower = currentUnitSystem === 'imperial'
+                                ? (flow * head) / (3960 * effRatio)
+                                : (flow * head) / (367 * effRatio);
+                            
+                            if (Math.abs(theoreticalPower - power) / power > 0.02) { // 2% tolerance
+                                if (!conflictFound) { // Show modal only for the first conflict
+                                    showConflictModal(i + 1);
+                                    conflictFound = true;
+                                }
+                                row.classList.add('conflict-row');
+                            }
+                        }
+                        // Case 2: Efficiency is given, calculate power
+                        else if (eff > 0) {
+                            const effRatio = eff / 100;
+                            const newPower = currentUnitSystem === 'imperial'
+                                ? (flow * head) / (3960 * effRatio)
+                                : (flow * head) / (367 * effRatio);
+                            row.cells[3].textContent = newPower > 0 ? newPower.toFixed(2) : '';
+                        }
+                        // Case 3: Power is given, calculate efficiency
+                        else if (power > 0) {
+                            const newEff = currentUnitSystem === 'imperial'
+                                ? ((flow * head) / (3960 * power)) * 100
+                                : ((flow * head) / (367 * power)) * 100;
+                            row.cells[2].textContent = (newEff > 0 && newEff <=100) ? newEff.toFixed(1) : '';
+                        }
+                    }
+                }
+            }
+
+
+            function getTableData() {
+                const data = [];
+                for (const row of dom.pumpDataBody.rows) {
+                    const rowData = Array.from(row.cells).map(c => parseFloat(c.textContent) || 0);
+                    if (rowData[0] > 0 || rowData[1] > 0) {
+                         data.push({ flow: rowData[0], head: rowData[1], eff: rowData[2], power: rowData[3], npshr: rowData[4] });
+                    }
+                }
+                return data;
+            }
+
+            dom.pumpDataBody.addEventListener('input', () => {
+                autoCalculateTable();
+                updateChart();
+            });
+
+            dom.pumpDataBody.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const text = e.clipboardData.getData('text/plain');
+                const rows = text.split(/\r?\n/);
+                const startCell = e.target;
+                const startRow = startCell.parentNode;
+                const startRowIndex = startRow.rowIndex - 1; // -1 for header
+                const startColIndex = startCell.cellIndex;
+
+                rows.forEach((rowText, i) => {
+                    const cols = rowText.split('\t');
+                    cols.forEach((colText, j) => {
+                        const targetRow = dom.pumpDataBody.rows[startRowIndex + i];
+                        if (targetRow) {
+                            const targetCell = targetRow.cells[startColIndex + j];
+                            if (targetCell) {
+                                targetCell.textContent = colText;
+                            }
+                        }
+                    });
+                });
+                autoCalculateTable();
+                updateChart();
+            });
+
+            // --- UNIT CONVERSION LOGIC ---
+            function convertUnits(from, to) {
+                const isImperialToMetric = from === 'imperial' && to === 'metric';
+                const factor = (key) => isImperialToMetric ? CONVERSIONS[key] : 1 / CONVERSIONS[key];
+                
+                for (const row of dom.pumpDataBody.rows) {
+                    const f = parseFloat(row.cells[0].textContent) || 0;
+                    const h = parseFloat(row.cells[1].textContent) || 0;
+                    const p = parseFloat(row.cells[3].textContent) || 0;
+                    const n = parseFloat(row.cells[4].textContent) || 0;
+
+                    row.cells[0].textContent = f > 0 ? (f * factor('flow')).toFixed(2) : '';
+                    row.cells[1].textContent = h > 0 ? (h * factor('head')).toFixed(2) : '';
+                    row.cells[3].textContent = p > 0 ? (p * factor('power')).toFixed(2) : '';
+                    row.cells[4].textContent = n > 0 ? (n * factor('head')).toFixed(2) : '';
+                }
+
+                dom.staticHead.value = (parseFloat(dom.staticHead.value) * factor('head')).toFixed(2);
+                dom.originalDiameter.value = (parseFloat(dom.originalDiameter.value) * factor('diameter')).toFixed(1);
+                dom.frictionCoefficient.value = (parseFloat(dom.frictionCoefficient.value) * factor('k_factor')).toExponential(2);
+                autoCalculateTable();
+            }
+
+            function updateUILabels() {
+                 const isMetric = currentUnitSystem === 'metric';
+                 document.getElementById('flowHeader').textContent = `Flow (${isMetric ? 'm³/hr' : 'GPM'})`;
+                 document.getElementById('headHeader').textContent = `Head (${isMetric ? 'm' : 'ft'})`;
+                 document.getElementById('powerHeader').textContent = `Power (${isMetric ? 'kW' : 'HP'})`;
+                 document.getElementById('npshrHeader').textContent = `NPSHr (${isMetric ? 'm' : 'ft'})`;
+                 document.querySelectorAll('.unit-len').forEach(el => el.textContent = isMetric ? 'm' : 'ft');
+                 document.querySelectorAll('.unit-diam').forEach(el => el.textContent = isMetric ? 'mm' : 'in');
+
+                 if(pumpChart) {
+                    pumpChart.options.scales.x.title.text = `Flow (${isMetric ? 'm³/hr' : 'GPM'})`;
+                    pumpChart.options.scales.yHead.title.text = `Head (${isMetric ? 'm' : 'ft'})`;
+                    pumpChart.options.scales.yPower.title.text = `Power (${isMetric ? 'kW' : 'HP'})`;
+                    pumpChart.options.scales.yEff.title.text = 'Efficiency (%)';
+                    pumpChart.options.scales.yNPSHr.title.text = `NPSHr (${isMetric ? 'm' : 'ft'})`;
+                 }
+            }
+            
+            dom.unitToggle.addEventListener('change', () => {
+                const fromSystem = currentUnitSystem;
+                currentUnitSystem = dom.unitToggle.checked ? 'metric' : 'imperial';
+                convertUnits(fromSystem, currentUnitSystem);
+                updateUILabels();
+                updateChart();
+            });
+
+            // --- AI & CHART LOGIC ---
+            function setLoadingState(isLoading, buttonId) {
+                const button = document.getElementById(buttonId);
+                if (!button) return;
+                
+                if (isLoading) {
+                    button.disabled = true;
+                    button.innerHTML = '<div class="loader"></div>';
+                    if (buttonId === 'analyzeButton') {
+                       dom.analysisResult.innerHTML = '<div class="flex justify-center items-center"><div class="loader"></div><p class="ml-2">Analyzing...</p></div>';
+                    }
+                } else {
+                    button.disabled = false;
+                    if (buttonId === 'generateDataButton') button.innerHTML = 'Generate Sample Data';
+                    if (buttonId === 'analyzeButton') {
+                        button.innerHTML = '✨ Analyze Full Performance';
+                        dom.analysisResult.innerHTML = '<p class="text-gray-500">Click "Analyze" for an AI summary.</p>';
+                    }
+                    if (buttonId === 'printPdfButton') {
+                        button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/><path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/></svg>Print to PDF';
+                    }
+                }
+            }
+            
+            async function callGemini(prompt, buttonId) {
+                setLoadingState(true, buttonId);
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+                    });
+                    if (!response.ok) throw new Error(`API call failed: ${response.status}`);
+                    const result = await response.json();
+                    if (result.candidates && result.candidates.length > 0) {
+                        return result.candidates[0].content.parts[0].text;
+                    }
+                    return "AI response not found or blocked by safety policies.";
+                } catch (error) {
+                    console.error("Gemini API call error:", error);
+                    return `Error: ${error.message}.`;
+                } finally {
+                    setLoadingState(false, buttonId);
+                }
+            }
+            
+            dom.generateDataButton.addEventListener('click', async () => {
+                const description = dom.pumpDescription.value;
+                if (!description) { alert("Please enter a pump description."); return; }
+                const units = currentUnitSystem === 'metric' ? 'metric (m3/hr, m, kW)' : 'imperial (GPM, ft, HP)';
+                const prompt = `Generate a typical pump performance curve for a pump described as: "${description}". Provide 6 data points in CSV format with 4 columns: Flow, Head, Efficiency (%), and NPSHr. Provide values appropriate for the ${units} system. Do NOT include headers, text, or markdown. Just raw CSV data. Example:\n0,120,0,10\n50,118,55,11`;
+                const generatedData = await callGemini(prompt, 'generateDataButton');
+                
+                const rows = generatedData.trim().split(/\r?\n/);
+                 rows.forEach((rowText, i) => {
+                    if(i >= 10) return;
+                    const cols = rowText.split(/[,;\s]+/);
+                    cols.forEach((colText, j) => {
+                        if(j >= 5) return;
+                        dom.pumpDataBody.rows[i].cells[j].textContent = colText;
+                    });
+                });
+                autoCalculateTable();
+                updateChart();
+            });
+
+            dom.analyzeButton.addEventListener('click', async () => {
+                if (!lastOperatingPoint) { alert("Operating point not calculated. Check system curve data."); return; }
+                
+                const units = {
+                    flow: currentUnitSystem === 'metric' ? 'm³/hr' : 'GPM',
+                    head: currentUnitSystem === 'metric' ? 'm' : 'ft',
+                    power: currentUnitSystem === 'metric' ? 'kW' : 'HP'
+                };
+
+                const prompt = `As a hydraulics expert, analyze the change in a pump's performance within a specific system. All provided data is in the ${currentUnitSystem} system.
+
+                New Conditions:
+                - Speed: ${dom.newRpm.value} RPM, Impeller Diameter: ${dom.newDiameter.value} ${currentUnitSystem === 'metric' ? 'mm' : 'in'}
+
+                System Definition:
+                - Static Head: ${dom.staticHead.value} ${units.head}
+                - Friction Coefficient (k): ${dom.frictionCoefficient.value}
+
+                Calculated Operating Point:
+                - Flow: ${lastOperatingPoint.flow.toFixed(2)} ${units.flow}
+                - Head: ${lastOperatingPoint.head.toFixed(2)} ${units.head}
+
+                Provide a concise analysis covering:
+                1. How the changes to the pump affected its performance curve.
+                2. An explanation of the calculated operating point and what it signifies.
+                3. The impact on Power Consumption (${units.power}) and NPSHr (${units.head}) at the new operating point.
+                4. Whether the pump is a good fit for this system under the new conditions.
+                Format as simple paragraphs.`;
+                
+                const analysis = await callGemini(prompt, 'analyzeButton');
+                dom.analysisResult.innerHTML = analysis.replace(/\n/g, '<br>').replace(/(\d+\.)/g, '<br><br><strong>$1</strong>');
+            });
+            
+            // PDF Printing
+            dom.printPdfButton.addEventListener('click', () => {
+                setLoadingState(true, 'printPdfButton');
+                const { jsPDF } = window.jspdf;
+                const printArea = document.getElementById('print-area');
+                
+                html2canvas(printArea, { scale: 2 }).then(canvas => {
+                    const imgData = canvas.toDataURL('image/png');
+                    const pdf = new jsPDF({
+                        orientation: 'portrait',
+                        unit: 'in',
+                        format: 'letter'
+                    });
+
+                    const imgProps = pdf.getImageProperties(imgData);
+                    const pdfWidth = pdf.internal.pageSize.getWidth();
+                    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                    
+                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                    pdf.save('pump-analysis.pdf');
+                    setLoadingState(false, 'printPdfButton');
+                }).catch(err => {
+                    console.error("Error generating PDF:", err);
+                    setLoadingState(false, 'printPdfButton');
+                });
+            });
+
+            function initializeChart() {
+                pumpChart = new Chart(dom.ctx, {
+                     type: 'line',
+                     data: { datasets: [
+                        { label: 'Original Head', data: [], borderColor: '#3b82f6', yAxisID: 'yHead', tension: 0.3 },
+                        { label: 'New Head', data: [], borderColor: '#3b82f6', borderDash: [5, 5], yAxisID: 'yHead', tension: 0.3 },
+                        { label: 'System Curve', data: [], borderColor: '#8b5cf6', yAxisID: 'yHead', borderWidth: 2.5, tension: 0.3 },
+                        { label: 'Operating Point', data: [], yAxisID: 'yHead', pointStyle: 'crossRot', pointRadius: 10, pointBorderWidth: 3, backgroundColor: '#c026d3', borderColor: '#c026d3' },
+                        { label: 'Original Power', data: [], borderColor: '#d946ef', yAxisID: 'yPower', hidden: !dom.showPower.checked, tension: 0.3 },
+                        { label: 'New Power', data: [], borderColor: '#d946ef', borderDash: [5, 5], yAxisID: 'yPower', hidden: !dom.showPower.checked, tension: 0.3 },
+                        { label: 'Original Eff.', data: [], borderColor: '#16a34a', yAxisID: 'yEff', hidden: !dom.showEfficiency.checked, tension: 0.3 },
+                        { label: 'New Eff.', data: [], borderColor: '#16a34a', borderDash: [5, 5], yAxisID: 'yEff', hidden: !dom.showEfficiency.checked, tension: 0.3 },
+                        { label: 'Original NPSHr', data: [], borderColor: '#f97316', yAxisID: 'yNPSHr', hidden: !dom.showNPSHr.checked, tension: 0.3 },
+                        { label: 'New NPSHr', data: [], borderColor: '#f97316', borderDash: [5, 5], yAxisID: 'yNPSHr', hidden: !dom.showNPSHr.checked, tension: 0.3 }
+                     ]},
+                     options: {
+                        responsive: true, maintainAspectRatio: false,
+                        animation: { duration: 0 }, // Disable animation for better PDF capture
+                        plugins: { tooltip: { mode: 'index', intersect: false } },
+                        scales: {
+                            x: { type: 'linear', title: { display: true } },
+                            yHead: { type: 'linear', position: 'left', title: { display: true, font: { weight: 'bold' }, color: '#3b82f6' } },
+                            yPower: { type: 'linear', position: 'right', title: { display: true, font: { weight: 'bold' }, color: '#d946ef' }, grid: { drawOnChartArea: false }, display: dom.showPower.checked },
+                            yEff: { type: 'linear', position: 'right', title: { display: true, text: 'Efficiency (%)', font: { weight: 'bold' }, color: '#16a34a' }, grid: { drawOnChartArea: false }, display: dom.showEfficiency.checked },
+                            yNPSHr: { type: 'linear', position: 'right', title: { display: true, font: { weight: 'bold' }, color: '#f97316' }, grid: { drawOnChartArea: false }, display: dom.showNPSHr.checked }
+                        }
+                     }
+                });
+                updateUILabels();
+            }
+            
+            function findIntersection(pumpCurvePoints, staticHead, k) { 
+                if (pumpCurvePoints.length < 2) return null;
+                for (let i = 0; i < pumpCurvePoints.length - 1; i++) {
+                    const p1 = pumpCurvePoints[i], p2 = pumpCurvePoints[i+1];
+                    const systemHead1 = staticHead + k * p1.x * p1.x, systemHead2 = staticHead + k * p2.x * p2.x;
+                    if ((p1.y >= systemHead1 && p2.y <= systemHead2) || (p1.y <= systemHead1 && p2.y >= systemHead2)) {
+                        const m_pump = (p2.y - p1.y) / (p2.x - p1.x) || 0;
+                        const b_pump = p1.y - m_pump * p1.x;
+                        const m_sys_linear = (systemHead2 - systemHead1) / (p2.x - p1.x) || 0;
+                        const b_sys_linear = systemHead1 - m_sys_linear * p1.x;
+
+                        if (Math.abs(m_pump - m_sys_linear) < 1e-9) continue; 
+
+                        const flow = (b_sys_linear - b_pump) / (m_pump - m_sys_linear);
+
+                        if (flow >= p1.x && flow <= p2.x) {
+                            return { flow, head: m_pump * flow + b_pump };
+                        }
+                    }
+                }
+                return null;
+            }
+
+            function updateChart() {
+                const N1 = parseFloat(dom.originalRpm.value) || 1;
+                const D1 = parseFloat(dom.originalDiameter.value) || 1;
+                const N2 = parseFloat(dom.newRpm.value);
+                const D2 = parseFloat(dom.newDiameter.value);
+                const staticHead = parseFloat(dom.staticHead.value) || 0;
+                const k = parseFloat(dom.frictionCoefficient.value) || 0;
+
+                dom.newRpmValue.textContent = N2;
+                dom.newDiameterValue.textContent = D2.toFixed(1);
+
+                const originalData = getTableData().sort((a,b) => a.flow - b.flow);
+                const originalPoints = { head: [], power: [], eff: [], npshr: [] };
+                const newPoints = { head: [], power: [], eff: [], npshr: [] };
+                
+                originalData.forEach(p => {
+                    const speedRatio = N2 / N1;
+                    const diameterRatio = D2 / D1;
+
+                    // Calculate new points for Head, Power, and Flow (affected by both speed and diameter)
+                    const newFlow = p.flow * speedRatio * diameterRatio;
+                    const newHead = p.head * Math.pow(speedRatio, 2) * Math.pow(diameterRatio, 2);
+                    const newPower = p.power * Math.pow(speedRatio, 3) * Math.pow(diameterRatio, 3);
+                    
+                    // --- CORRECTED NPSHr CALCULATION ---
+                    // NPSHr flow is only affected by speed changes.
+                    const npshFlow = p.flow * speedRatio;
+                    
+                    // Determine the correct exponent for NPSHr based on speed change direction.
+                    let npshSpeedExponent;
+                    if (speedRatio > 1) {
+                        npshSpeedExponent = 1.5;
+                    } else if (speedRatio < 1) {
+                        npshSpeedExponent = 1.2;
+                    } else {
+                        npshSpeedExponent = 1.0; // No speed change
+                    }
+                    
+                    // Calculate new NPSHr value. It is NOT affected by diameter changes.
+                    const newNPSHr = p.npshr * Math.pow(speedRatio, npshSpeedExponent);
+                    // --- END OF CORRECTION ---
+
+                    // Populate arrays for the original curves
+                    originalPoints.head.push({ x: p.flow, y: p.head });
+                    originalPoints.power.push({ x: p.flow, y: p.power });
+                    originalPoints.eff.push({ x: p.flow, y: p.eff });
+                    originalPoints.npshr.push({ x: p.flow, y: p.npshr });
+                    
+                    // Populate arrays for the new curves
+                    newPoints.head.push({ x: newFlow, y: newHead });
+                    newPoints.power.push({ x: newFlow, y: newPower });
+                    newPoints.eff.push({ x: newFlow, y: p.eff }); // Efficiency curve shifts with flow but value is constant
+                    newPoints.npshr.push({ x: npshFlow, y: newNPSHr }); // Use the dedicated npsh flow
+                });
+
+                const maxFlow = newPoints.head.length > 0 ? Math.max(...newPoints.head.map(p => p.x)) * 1.1 : 300;
+                const systemCurvePoints = [];
+                for (let flow = 0; flow <= maxFlow; flow += maxFlow / 20) {
+                    systemCurvePoints.push({ x: flow, y: staticHead + k * flow * flow });
+                }
+
+                const operatingPoint = findIntersection(newPoints.head, staticHead, k);
+                lastOperatingPoint = operatingPoint;
+
+                if (operatingPoint) {
+                    const units = { flow: currentUnitSystem === 'metric' ? 'm³/hr' : 'GPM', len: currentUnitSystem === 'metric' ? 'm' : 'ft' };
+                    dom.operatingPointResult.innerHTML = `<h4 class="font-bold text-violet-800">Operating Point</h4><p class="text-sm text-violet-700">${operatingPoint.flow.toFixed(1)} ${units.flow} @ ${operatingPoint.head.toFixed(1)} ${units.len}</p>`;
+                } else {
+                    dom.operatingPointResult.innerHTML = `<h4 class="font-bold text-violet-800">Operating Point</h4><p class="text-sm text-red-600">No intersection</p>`;
+                }
+
+                if (!pumpChart) return;
+                const datasets = pumpChart.data.datasets;
+                datasets[0].data = originalPoints.head; datasets[1].data = newPoints.head;
+                datasets[2].data = systemCurvePoints; datasets[3].data = operatingPoint ? [operatingPoint] : [];
+                datasets[4].data = originalPoints.power; datasets[5].data = newPoints.power;
+                datasets[6].data = originalPoints.eff; datasets[7].data = newPoints.eff;
+                datasets[8].data = originalPoints.npshr; datasets[9].data = newPoints.npshr;
+                pumpChart.update();
+            }
+
+            // --- EVENT LISTENERS ---
+            const allInputs = [dom.staticHead, dom.frictionCoefficient, dom.originalRpm, dom.originalDiameter, dom.newRpm, dom.newDiameter];
+            allInputs.forEach(input => input.addEventListener('input', updateChart));
+            
+            [dom.showPower, dom.showEfficiency, dom.showNPSHr].forEach(check => {
+                check.addEventListener('change', () => {
+                    if(!pumpChart) return;
+                    pumpChart.options.scales.yPower.display = dom.showPower.checked;
+                    pumpChart.data.datasets[4].hidden = !dom.showPower.checked;
+                    pumpChart.data.datasets[5].hidden = !dom.showPower.checked;
+                    pumpChart.options.scales.yEff.display = dom.showEfficiency.checked;
+                    pumpChart.data.datasets[6].hidden = !dom.showEfficiency.checked;
+                    pumpChart.data.datasets[7].hidden = !dom.showEfficiency.checked;
+                    pumpChart.options.scales.yNPSHr.display = dom.showNPSHr.checked;
+                    pumpChart.data.datasets[8].hidden = !dom.showNPSHr.checked;
+                    pumpChart.data.datasets[9].hidden = !dom.showNPSHr.checked;
+                    pumpChart.update();
+                });
+            });
+
+            // --- INITIAL LOAD ---
+            initializeTable();
+            initializeChart();
+            updateChart();
+        });
+    </script>
+</body>
+</html>
