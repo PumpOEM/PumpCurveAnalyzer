@@ -124,14 +124,18 @@
                      <div class="space-y-4">
                         <div><label for="originalRpm" class="block text-sm font-medium">Original Speed (RPM)</label><input type="number" id="originalRpm" value="1800" class="mt-1 w-full p-2 border rounded-md"></div>
                         <div><label for="originalDiameter" class="block text-sm font-medium">Original Impeller Dia. (<span class="unit-diam">in</span>)</label><input type="number" id="originalDiameter" value="10" class="mt-1 w-full p-2 border rounded-md"></div>
+                        
+                        <!-- REPLACEMENT: Textbox for New Speed -->
                         <div>
-    <label for="newRpm" class="block text-sm font-medium">New Speed (RPM)</label>
-    <input type="number" id="newRpm" value="1800" class="mt-1 w-full p-2 border rounded-md">
-</div>
-                       <div>
-    <label for="newDiameter" class="block text-sm font-medium">New Impeller Dia. (<span class="unit-diam">in</span>)</label>
-    <input type="number" id="newDiameter" value="10" class="mt-1 w-full p-2 border rounded-md">
-</div>
+                            <label for="newRpm" class="block text-sm font-medium">New Speed (RPM)</label>
+                            <input type="number" id="newRpm" value="1800" class="mt-1 w-full p-2 border rounded-md">
+                        </div>
+                        
+                        <!-- REPLACEMENT: Textbox for New Diameter -->
+                        <div>
+                            <label for="newDiameter" class="block text-sm font-medium">New Impeller Dia. (<span class="unit-diam">in</span>)</label>
+                            <input type="number" id="newDiameter" value="10" class="mt-1 w-full p-2 border rounded-md">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -189,7 +193,7 @@
             let pumpChart;
             let lastOperatingPoint = null;
             let currentUnitSystem = 'imperial'; // 'imperial' or 'metric'
-            const apiKey = "AIzaSyDpz3Xxf7VKtqkviaDoCaHiey2njc5K5j4";
+            const apiKey = "AIzaSyDpz3Xxf7VKtqkviaDoCaHiey2njc5K5j4"; // User's API Key
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
             // --- DOM ELEMENT REFERENCES ---
@@ -200,8 +204,8 @@
                 frictionCoefficient: document.getElementById('frictionCoefficient'),
                 originalRpm: document.getElementById('originalRpm'),
                 originalDiameter: document.getElementById('originalDiameter'),
-                newRpmValue: document.getElementById('newRpmValue'),
-                newDiameterValue: document.getElementById('newDiameterValue'),
+                newRpm: document.getElementById('newRpm'),
+                newDiameter: document.getElementById('newDiameter'),
                 operatingPointResult: document.getElementById('operatingPointResult'),
                 analysisResult: document.getElementById('analysisResult'),
                 ctx: document.getElementById('pumpCurveChart').getContext('2d'),
@@ -432,7 +436,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
                     });
-                    if (!response.ok) throw new Error(`API call failed: ${response.status}`);
+                    if (!response.ok) throw new Error(`API call failed: ${response.status}.`);
                     const result = await response.json();
                     if (result.candidates && result.candidates.length > 0) {
                         return result.candidates[0].content.parts[0].text;
@@ -440,7 +444,7 @@
                     return "AI response not found or blocked by safety policies.";
                 } catch (error) {
                     console.error("Gemini API call error:", error);
-                    return `Error: ${error.message}.`;
+                    return `Error: ${error.message}. Check browser console for more details. The API key may need to be restricted to your website's domain in the Google Cloud Console.`;
                 } finally {
                     setLoadingState(false, buttonId);
                 }
@@ -583,12 +587,11 @@
             function updateChart() {
                 const N1 = parseFloat(dom.originalRpm.value) || 1;
                 const D1 = parseFloat(dom.originalDiameter.value) || 1;
-                const N2 = parseFloat(dom.newRpm.value);
-                const D2 = parseFloat(dom.newDiameter.value);
+                const N2 = parseFloat(dom.newRpm.value) || 0;
+                const D2 = parseFloat(dom.newDiameter.value) || 0;
                 const staticHead = parseFloat(dom.staticHead.value) || 0;
                 const k = parseFloat(dom.frictionCoefficient.value) || 0;
 
-               
                 const originalData = getTableData().sort((a,b) => a.flow - b.flow);
                 const originalPoints = { head: [], power: [], eff: [], npshr: [] };
                 const newPoints = { head: [], power: [], eff: [], npshr: [] };
@@ -602,35 +605,25 @@
                     const newHead = p.head * Math.pow(speedRatio, 2) * Math.pow(diameterRatio, 2);
                     const newPower = p.power * Math.pow(speedRatio, 3) * Math.pow(diameterRatio, 3);
                     
-                    // --- CORRECTED NPSHr CALCULATION ---
                     // NPSHr flow is only affected by speed changes.
                     const npshFlow = p.flow * speedRatio;
                     
-                    // Determine the correct exponent for NPSHr based on speed change direction.
                     let npshSpeedExponent;
-                    if (speedRatio > 1) {
-                        npshSpeedExponent = 1.5;
-                    } else if (speedRatio < 1) {
-                        npshSpeedExponent = 1.2;
-                    } else {
-                        npshSpeedExponent = 1.0; // No speed change
-                    }
+                    if (speedRatio > 1) { npshSpeedExponent = 1.5; } 
+                    else if (speedRatio < 1) { npshSpeedExponent = 1.2; } 
+                    else { npshSpeedExponent = 1.0; }
                     
-                    // Calculate new NPSHr value. It is NOT affected by diameter changes.
                     const newNPSHr = p.npshr * Math.pow(speedRatio, npshSpeedExponent);
-                    // --- END OF CORRECTION ---
 
-                    // Populate arrays for the original curves
                     originalPoints.head.push({ x: p.flow, y: p.head });
                     originalPoints.power.push({ x: p.flow, y: p.power });
                     originalPoints.eff.push({ x: p.flow, y: p.eff });
                     originalPoints.npshr.push({ x: p.flow, y: p.npshr });
                     
-                    // Populate arrays for the new curves
                     newPoints.head.push({ x: newFlow, y: newHead });
                     newPoints.power.push({ x: newFlow, y: newPower });
-                    newPoints.eff.push({ x: newFlow, y: p.eff }); // Efficiency curve shifts with flow but value is constant
-                    newPoints.npshr.push({ x: npshFlow, y: newNPSHr }); // Use the dedicated npsh flow
+                    newPoints.eff.push({ x: newFlow, y: p.eff });
+                    newPoints.npshr.push({ x: npshFlow, y: newNPSHr });
                 });
 
                 const maxFlow = newPoints.head.length > 0 ? Math.max(...newPoints.head.map(p => p.x)) * 1.1 : 300;
